@@ -8,6 +8,8 @@ local hovering_location = nil
 local hovering_system, hovering_planet = nil, nil
 local viewing_system, viewing_planet = nil, nil
 local fluxs = {}
+--
+local lua_body_img,lua_canvas
 local function ping()
    if data == nil or data.ping_locations == nil then
       return
@@ -23,7 +25,7 @@ function love.load()
    fluxs = { scale = 1, opacity = 0.4, ping_radius = 0, ping_opacity = 1 }
    data, last_updated =
       {
-         ping_locations = { { 100, 100, 25, 25, false, 35, 50, -25 }, { 25, 25, 55, 55, true } },
+         -- ping_locations = { { 100, 100, 25, 25, false, 35, 50, -25 }, { 25, 25, 55, 55, true } },
          [25] = {
             [25] = {
                has_sol = false,
@@ -51,7 +53,7 @@ function love.load()
                   [55] = {
                      color = { 0.2, 0.2, 1 },
                      name = "Lua",
-                     radius = 7000,
+                     radius = 8000,
                      has_rings = false,
                      ring_type = nil,
                      type = "Barren",
@@ -98,8 +100,38 @@ function love.load()
    if data.ping_locations then
       ping()
    end
+   do
+      lua_canvas = love.graphics.newCanvas(600,600)
+      love.graphics.setCanvas({
+         lua_canvas,
+         stencil=true
+      })
+      -- lua_canvas:renderTo(function()
+      -- function love.draw()
+         love.graphics.setStencilTest("notequal",1)
+         local xs, ys = love.graphics.getDimensions();
+         local cx, cy = xs*.5, ys*.5
+         local rad = math.min(xs/2,ys/2)
+         -- love.graphics.setColor(1,0,0,1)
+         -- love.graphics.points(cx + rad/2 - rad/24, cy - rad/2 + rad/24)
+         love.graphics.stencil(function()
+            love.graphics.circle("fill", cx + rad/2 - rad/8, cy - rad/2 + rad/8, rad/3)
+         end,"replace",1,true)
+         love.graphics.setColor(1,1,1,1)
+         love.graphics.circle("fill", cx, cy, rad, rad)
+      -- end
+      -- end)
+      love.graphics.setCanvas()
+      -- local imgd = lua_canvas:newImageData()
+      -- lua_body_img = love.graphics.newImage(imgd)
+   end
 end
 local xs, ys = 100, 100
+local scale_x, scale_y = love.graphics.getDimensions()
+scale_x,scale_y = scale_x/xs,scale_y/ys
+function love.resize(x,y)
+   scale_x,scale_y = x/xs,y/ys
+end
 -- local compass_x,compass_y = 90,10
 ---@diagnostic disable-next-line: unused-local, unused-function
 local function printc(t, x, y, ...)
@@ -187,8 +219,9 @@ local function set_viewing_system(system)
       viewing_system = system
       transition_in = true
       flux.to(fluxs, 1.2, { opacity = 0.2 })
-      fluxs.body_x = (viewing_system[1] + 1) / 200 * xs
-      fluxs.body_y = (viewing_system[2] + 1) / 200 * ys
+      -- viewing_system[1]+1
+      fluxs.body_x = (viewing_system[1]) / 200 * xs
+      fluxs.body_y = (viewing_system[2]) / 200 * ys
       flux.to(fluxs, 1, { scale = 3, body_x = xs * 0.5, body_y = ys * 0.5 }):oncomplete(function()
          transition_in = false
          hovering_system = nil
@@ -236,21 +269,30 @@ local function draw_body(xp, yp, star, scale, big)
    local rad = star.radius / 25000 -- 0-1 (not clamped, though, just general intention)
    love.graphics.setColor(star.color[1], star.color[2], star.color[3], (big and 0.7) or 1)
    local rad5 = rad * 5 * scale -- scaled to grid coordinate size (when viewing solar system)
-   love.graphics.circle("fill", xp, yp, rad5)
    if star and star.special then
-      if star.type == "Lua" and not big then
-         love.graphics.circle("fill", xp + rad5, yp - rad5, (rad + 0.2) * scale)
-         -- love.graphics.setColor(1,0,0,1)
+      if star.type == "Lua" --[[and not big]] then
+         local cr,cg,cb,ca = love.graphics.getColor()
+         local canscalish = rad*5*(big and scale or (scale-1)*1.2+1)--*(big and 3/4 or 1)
+         love.graphics.draw(lua_canvas, xp-canscalish, yp-canscalish, 0, canscalish*1/300)
          -- TODO: lines
-         -- love.graphics.setLineWidth(.4)
-         -- local segments = 7
-         -- for i=1,segments do
-         --    -- center of line we're gonna draw
-         --    local cx,cy = math.sin(math.rad(i-.25/segments*360))*off,math.cos(math.rad(i-.25/segments*360))*off
-         --    local nx,ny = math.sin(math.rad(i+.25/segments*360))*off,math.cos(math.rad(i+.25/segments*360))*off
-         --    love.graphics.line(xp+cx,yp+cy,xp+nx,yp+ny)
-         -- end
+         love.graphics.setColor(1,1,1,(big and .7) or .6)
+         love.graphics.setLineWidth((big and .4) or .1)
+         local off = rad5 + (big and 3/4 or .5)*((scale-1)*1.2+1)
+         local segments = (big and 14) or 9
+         for i=1,segments do
+            i=i+(big and .3 or .4) -- offset manually tuned to make lua overlap a line
+            -- center of line we're gonna draw
+            local cx,cy = math.sin(math.rad((i-.25)/segments*360))*off,math.cos(math.rad((i-.25)/segments*360))*off
+            local nx,ny = math.sin(math.rad((i+.25)/segments*360))*off,math.cos(math.rad((i+.25)/segments*360))*off
+            love.graphics.line(xp+cx,yp+cy,xp+nx,yp+ny)
+         end
+         love.graphics.setColor(cr,cg,cb,ca)
+         if not big then love.graphics.circle("fill", xp + rad5, yp - rad5, (rad + 0.2) * scale) end
+      else
+         love.graphics.circle("fill", xp, yp, rad5)
       end
+   else
+      love.graphics.circle("fill", xp, yp, rad5)
    end
 end
 function love.mousepressed(mx, my, button)
@@ -420,6 +462,7 @@ end
 function love.draw()
    love.graphics.setColor(1, 1, 1, 1)
    love.graphics.setDefaultFilter("nearest", "nearest")
+   love.graphics.scale(scale_x,scale_y)
    local hovering
    if viewing_planet then
       hovering = nil
@@ -428,9 +471,9 @@ function love.draw()
    else
       hovering = hovering_system or hovering_location
    end
-   local width, height = love.graphics.getDimensions()
+   -- local width, height = love.graphics.getDimensions()
    -- local sqratio = width/height
-   love.graphics.scale(width / xs, height / ys)
+   -- love.graphics.scale(width / xs, height / ys)
    if transition_in then
       love.graphics.push()
       love.graphics.translate(-(fluxs.scale - 1) * xs / 2, -(fluxs.scale - 1) * ys / 2)
@@ -658,8 +701,8 @@ function love.draw()
                local system = row[y]
                if system then
                   if system[0] and system[0][0] or system.has_sol then
-                     local xp, yp = (x + 1) / 200 * xs, (y + 1) / 200 * ys
                      local star = system[0] and system[0][0] or nil
+                     local xp, yp = (x + (star and 1 or 0)) / 200 * xs, (y + (star and 1 or 0)) / 200 * ys
                      draw_body(xp, yp, star, (not star and 4 or 1))
                   end
                end
